@@ -1,56 +1,53 @@
-# Welcome to your Expo app 👋
+# Écarlate — suivi d'anneau contraceptif
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Appli Android personnelle (Expo SDK 58, TypeScript, Expo Router). Cycle 21 jours avec /
+7 jours sans, rappels locaux répétés toutes les heures, retraits imprévus, calendrier.
+**100 % local** : SQLite sur le téléphone, aucun compte, aucun serveur, aucune requête réseau.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Commandes
 
 ```bash
-npm run reset-project
+npm install          # dépendances
+npm test             # tests Jest (logique du cycle, notifications, contrastes WCAG)
+npm run typecheck    # TypeScript
+npx eslint src       # lint
+npx expo start       # serveur de dev (Expo Go)
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## Architecture
 
-### Other setup steps
+```
+index.ts                      point d'entrée : tâche « C'est fait » définie avant tout
+src/app/                      routes Expo Router uniquement
+  _layout.tsx                 polices, store, thème, garde onboarding ↔ onglets
+  onboarding.tsx
+  (tabs)/                     Accueil / Calendrier / Réglages (NativeTabs)
+src/core/                     logique PURE et testée (aucune dépendance React/Expo)
+  cycle.ts                    état, échéances, frise, jours du calendrier, validations
+  notification-plan.ts        liste des notifs à programmer + idempotence de « C'est fait »
+  format.ts                   dates en français
+src/data/db.ts                SQLite : événements + réglages
+src/notifications/            expo-notifications (canal, catégorie, programmation, tâche)
+src/state/app-store.tsx       store React : charge, modifie, reprogramme
+src/theme/                    tokens (couleurs sombre/clair, espacements, typo, lueurs, motion)
+src/components/               composants réutilisables (bouton lumineux, cercle magique…)
+src/screens/                  corps des écrans
+scripts/generate-icons.py     génère les icônes (motif original) avec cairosvg
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### Règles métier
 
-## Learn more
+- Retrait prévu = dernière pose **réelle** + 21 jours ; pose prévue = dernier retrait réel + 7 jours.
+- Calculs en jours calendaires locaux : l'heure murale est conservée au passage heure d'été / d'hiver.
+- Retrait imprévu < 3 h : enregistrement seul. > 3 h : décompte de 7 jours à partir de l'heure
+  saisie, indépendant du cycle (plusieurs décomptes : la fin la plus tardive l'emporte).
+- Calendrier : la couleur d'un jour = phase en vigueur à la fin de la journée (21 jours « avec »,
+  7 « sans »).
 
-To learn more about developing your project with Expo, look at the following resources:
+### Notifications
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+À chaque ouverture et à chaque changement : on annule tout, puis on programme jusqu'à 48 rappels
+horaires datés à partir de l'échéance (+ 1 notif de fin de contraception supplémentaire), soit
+≤ 60 (limite iOS : 64). Le bouton « C'est fait » enregistre l'action sans ouvrir l'appli
+(tâche headless Android), et n'agit que si la notification correspond à l'action réellement
+attendue (pas de double enregistrement).

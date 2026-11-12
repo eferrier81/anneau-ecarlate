@@ -11,20 +11,13 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { buildNotificationPlan } from '@/core/notification-plan';
-import type { NextAction, RingEvent } from '@/core/types';
+import type { ActionNotificationData } from '@/core/notification-payload';
+import type { RingEvent } from '@/core/types';
 import { palettes } from '@/theme/colors';
 
 export const CHANNEL_ID = 'rappels-anneau';
 export const CATEGORY_ID = 'confirmer-anneau';
 export const ACTION_DONE = 'cest-fait';
-
-/** Données attachées à chaque notification d'action. */
-export interface ActionNotificationData {
-  kind: 'action' | 'extra_fin';
-  action?: NextAction;
-  dueAt?: number;
-  [key: string]: unknown;
-}
 
 let setupDone = false;
 
@@ -156,25 +149,4 @@ export async function dismissPresented(): Promise<void> {
   } catch {
     // sans importance
   }
-}
-
-/** Extrait les données d'une notification, y compris depuis une tâche headless Android. */
-export function readActionData(
-  content: { data?: unknown } | undefined | null,
-): ActionNotificationData | null {
-  let raw: unknown = content?.data;
-  if (raw && typeof raw === 'object' && 'dataString' in raw) {
-    try {
-      raw = JSON.parse(String((raw as { dataString: unknown }).dataString));
-    } catch {
-      return null;
-    }
-  }
-  if (!raw || typeof raw !== 'object') return null;
-  const d = raw as Record<string, unknown>;
-  if (d.kind !== 'action') return null;
-  const action = d.action === 'retirer' || d.action === 'remettre' ? d.action : undefined;
-  const dueAt = typeof d.dueAt === 'number' ? d.dueAt : Number(d.dueAt);
-  if (!action || !Number.isFinite(dueAt)) return null;
-  return { kind: 'action', action, dueAt };
 }

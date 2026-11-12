@@ -12,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { confirmationEvent, getCycleState, type CycleState } from '@/core/cycle';
 import type { CycleEventType, RemovalDuration, RingEvent } from '@/core/types';
@@ -93,6 +93,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       if (response.actionIdentifier !== ACTION_DONE) return;
+      // Hors premier plan, Android confie l'action à la tâche headless : on ne la traite
+      // pas une seconde fois ici, on recharge seulement au retour dans l'appli.
+      if (Platform.OS === 'android' && AppState.currentState !== 'active') return;
       await handleDoneAction(response.notification.request.content);
       await reload();
     });

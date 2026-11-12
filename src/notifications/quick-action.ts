@@ -4,26 +4,38 @@
  * (appli ouverte) et au lancement (dernière réponse non traitée). Idempotent.
  */
 import { confirmationEvent, getCycleState } from '@/core/cycle';
-import { matchesPendingAction } from '@/core/notification-plan';
+import { readActionData, shouldConfirmFromNotification } from '@/core/notification-payload';
 import { insertEvent, listEvents, loadSettings, newId } from '@/data/db';
 
-import { dismissPresented, readActionData, syncNotifications } from './scheduler';
+import { dismissPresented, syncNotifications } from './scheduler';
 
-export async function handleDoneAction(content: { data?: unknown } | null | undefined): Promise<boolean> {
-  const data = readActionData(content);
-  if (!data?.action || data.dueAt === undefined) return false;
+// Un seul traitement à la fois (écouteur + tâche dans le même runtime JS).
+let queue: Promise<unknown> = Promise.resolve();
 
+export function handleDoneAction(content: unknown): Promise<boolean> {
+  const run = () => processDoneAction(content);
+  const next = queue.then(run, run);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+async function processDoneAction(content: unknown): Promise<boolean> {
   const now = Date.now();
   let events = await listEvents();
   let recorded = false;
-  if (matchesPendingAction(events, now, data.action, data.dueAt)) {
-    const state = getCycleState(events, now)!;
-    await insertEvent(confirmationEvent(state, now, newId()));
-    events = await listEvents();
-    recorded = true;
+
+  if (shouldConfirmFromNotification(events, now, readActionData(content))) {
+    const state = getCycleState(events, now);
+    if (state) {
+      await insertEvent(confirmationEvent(state, now, newId()));
+      events = await listEvents();
+      recorded = true;
+    }
   }
+
+  // Dans tous les cas : on retire les notifs affichées et on remet le plan à jour.
+  await dismissPresented();
   const settings = await loadSettings();
   await syncNotifications(events, settings.repeatCount);
-  await dismissPresented();
   return recorded;
 }
